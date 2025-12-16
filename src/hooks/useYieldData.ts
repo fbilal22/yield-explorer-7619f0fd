@@ -1,29 +1,7 @@
 import { useState, useCallback } from "react";
 import { CountryYieldData } from "@/types/yield";
-import { countries, maturities } from "@/lib/countries";
-
-// Mock data generator for initial display
-// In production, this would be replaced with actual API calls
-function generateMockData(): CountryYieldData[] {
-  return countries.map((country) => {
-    const baseRate = Math.random() * 8 + 1; // 1-9%
-    const rates: Record<string, number | null> = {};
-    
-    maturities.forEach((m, index) => {
-      // Create a realistic yield curve shape
-      const spread = (index - 5) * 0.15; // Steeper curve
-      const noise = (Math.random() - 0.5) * 0.3;
-      rates[m] = Math.max(0, baseRate + spread + noise);
-    });
-
-    return {
-      country: country.name,
-      slug: country.slug,
-      rates,
-      lastUpdated: new Date().toISOString(),
-    };
-  });
-}
+import { countries } from "@/lib/countries";
+import { scrapeAllYields } from "@/lib/api/yields";
 
 export function useYieldData() {
   const [data, setData] = useState<CountryYieldData[]>([]);
@@ -36,17 +14,20 @@ export function useYieldData() {
     setError(null);
 
     try {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      console.log("Starting to fetch real yield data...");
+      const response = await scrapeAllYields();
       
-      // For now, use mock data
-      // TODO: Replace with actual Firecrawl API calls via Edge Function
-      const mockData = generateMockData();
-      setData(mockData);
-      setLastFetched(new Date().toLocaleTimeString());
+      if (response.success && response.data) {
+        console.log(`Fetched ${response.data.length} countries`);
+        setData(response.data);
+        setLastFetched(new Date().toLocaleTimeString());
+      } else {
+        console.error("Failed to fetch yields:", response.error);
+        setError(response.error || "Failed to fetch yield data");
+      }
     } catch (err) {
+      console.error("Error fetching yield data:", err);
       setError("Failed to fetch yield data");
-      console.error(err);
     } finally {
       setIsLoading(false);
     }
