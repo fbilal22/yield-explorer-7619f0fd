@@ -10,12 +10,12 @@ const priorityCountries = [
   "china", "india", "brazil", "south-korea", "netherlands"
 ];
 
-// Default maturities to show if none found
-const DEFAULT_MATURITIES = ["1M", "3M", "6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"];
+// Standard maturities to display (filter out uncommon ones like 2M, 4M, 4Y, etc.)
+const STANDARD_MATURITIES = ["1M", "3M", "6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"];
 
 export function useYieldData() {
   const [data, setData] = useState<CountryYieldData[]>([]);
-  const [maturities, setMaturities] = useState<string[]>(DEFAULT_MATURITIES);
+  const [maturities, setMaturities] = useState<string[]>(STANDARD_MATURITIES);
   const [isLoading, setIsLoading] = useState(false);
   const [lastFetched, setLastFetched] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,21 +40,8 @@ export function useYieldData() {
         console.log(`Fetched ${response.data.length} countries`);
         setData(response.data);
         
-        // Use maturities from response if available
-        if (response.maturities && response.maturities.length > 0) {
-          console.log(`Using ${response.maturities.length} maturities from response:`, response.maturities);
-          setMaturities(response.maturities);
-        } else {
-          // Calculate from data
-          const allMats = new Set<string>();
-          response.data.forEach(country => {
-            Object.keys(country.rates).forEach(m => allMats.add(m));
-          });
-          if (allMats.size > 0) {
-            const sorted = sortMaturities(Array.from(allMats));
-            setMaturities(sorted);
-          }
-        }
+        // Always use standard maturities for display
+        setMaturities(STANDARD_MATURITIES);
         
         setLastFetched(new Date().toLocaleTimeString());
       } else {
