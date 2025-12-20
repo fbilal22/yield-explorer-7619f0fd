@@ -6,6 +6,7 @@ interface ScrapeResponse {
   success: boolean;
   error?: string;
   data?: CountryYieldData[];
+  maturities?: string[];
 }
 
 export async function scrapeYields(

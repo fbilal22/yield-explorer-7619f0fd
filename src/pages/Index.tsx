@@ -8,6 +8,7 @@ const Index = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const {
     data,
+    maturities,
     isLoading,
     lastFetched,
     fetchData,
@@ -75,6 +76,7 @@ const Index = () => {
 
               <YieldTable
                 data={data}
+                maturities={maturities}
                 isLoading={isLoading}
                 searchQuery={searchQuery}
               />

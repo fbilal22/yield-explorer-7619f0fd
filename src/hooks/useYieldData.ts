@@ -10,8 +10,12 @@ const priorityCountries = [
   "china", "india", "brazil", "south-korea", "netherlands"
 ];
 
+// Default maturities to show if none found
+const DEFAULT_MATURITIES = ["1M", "3M", "6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"];
+
 export function useYieldData() {
   const [data, setData] = useState<CountryYieldData[]>([]);
+  const [maturities, setMaturities] = useState<string[]>(DEFAULT_MATURITIES);
   const [isLoading, setIsLoading] = useState(false);
   const [lastFetched, setLastFetched] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +39,23 @@ export function useYieldData() {
       if (response.success && response.data) {
         console.log(`Fetched ${response.data.length} countries`);
         setData(response.data);
+        
+        // Use maturities from response if available
+        if (response.maturities && response.maturities.length > 0) {
+          console.log(`Using ${response.maturities.length} maturities from response:`, response.maturities);
+          setMaturities(response.maturities);
+        } else {
+          // Calculate from data
+          const allMats = new Set<string>();
+          response.data.forEach(country => {
+            Object.keys(country.rates).forEach(m => allMats.add(m));
+          });
+          if (allMats.size > 0) {
+            const sorted = sortMaturities(Array.from(allMats));
+            setMaturities(sorted);
+          }
+        }
+        
         setLastFetched(new Date().toLocaleTimeString());
       } else {
         console.error("Failed to fetch yields:", response.error);
@@ -50,6 +71,7 @@ export function useYieldData() {
 
   return {
     data,
+    maturities,
     isLoading,
     lastFetched,
     error,
@@ -57,4 +79,19 @@ export function useYieldData() {
     totalCountries: countries.length,
     loadedCountries: data.length,
   };
+}
+
+// Sort maturities in proper order (1M, 2M, 3M... 1Y, 2Y... 10Y, 20Y, 30Y)
+function sortMaturities(maturities: string[]): string[] {
+  return maturities.sort((a, b) => {
+    const parseMaturity = (m: string) => {
+      const match = m.match(/^(\d+)(M|Y)$/);
+      if (!match) return Infinity;
+      const num = parseInt(match[1]);
+      const unit = match[2];
+      // Convert to months for comparison
+      return unit === 'M' ? num : num * 12;
+    };
+    return parseMaturity(a) - parseMaturity(b);
+  });
 }
