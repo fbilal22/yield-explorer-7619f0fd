@@ -5,7 +5,7 @@ const corsHeaders = {
 
 interface YieldData {
   maturity: string;
-  rate: number | null;
+  rate: number;
 }
 
 interface CountryYieldResult {
@@ -15,6 +15,13 @@ interface CountryYieldResult {
   lastUpdated?: string;
   error?: string;
 }
+
+// All possible maturities we might encounter, in order
+const ALL_MATURITIES = [
+  '1M', '2M', '3M', '4M', '6M', '9M',
+  '1Y', '2Y', '3Y', '4Y', '5Y', '6Y', '7Y', '8Y', '9Y',
+  '10Y', '12Y', '15Y', '20Y', '25Y', '30Y', '40Y', '50Y'
+];
 
 // Map maturity strings from the website to our standard format
 function normalizeMaturity(maturity: string): string | null {
@@ -28,23 +35,8 @@ function normalizeMaturity(maturity: string): string | null {
   const unit = match[2];
   
   if (unit === 'month') {
-    if (num === 1) return '1M';
-    if (num === 2) return '2M';
-    if (num === 3) return '3M';
-    if (num === 4) return '4M';
-    if (num === 6) return '6M';
-    if (num === 9) return '9M';
     return `${num}M`;
   } else {
-    if (num === 1) return '1Y';
-    if (num === 2) return '2Y';
-    if (num === 3) return '3Y';
-    if (num === 5) return '5Y';
-    if (num === 7) return '7Y';
-    if (num === 10) return '10Y';
-    if (num === 15) return '15Y';
-    if (num === 20) return '20Y';
-    if (num === 30) return '30Y';
     return `${num}Y`;
   }
 }
@@ -53,26 +45,71 @@ function normalizeMaturity(maturity: string): string | null {
 // Format: | [1 month](url) | 3.620% | -31.7 bp | ...
 function parseYieldData(markdown: string): YieldData[] {
   const yields: YieldData[] = [];
+  const seenMaturities = new Set<string>();
   
-  // Match table rows like: | [1 month](url) | 3.620% | ... or | 1 month | 3.620% | ...
-  // The pattern captures: maturity text and the rate percentage
-  const tableRowPattern = /\|\s*(?:\[)?(\d+\s+(?:month|year)s?)(?:\][^\|]*)?\s*\|\s*([\d.]+)%/gi;
+  // Split by lines for better parsing
+  const lines = markdown.split('\n');
   
-  let match;
-  while ((match = tableRowPattern.exec(markdown)) !== null) {
-    const maturityText = match[1].trim();
-    const rateValue = parseFloat(match[2]);
+  for (const line of lines) {
+    // Skip header lines
+    if (line.includes('Residual') || line.includes('Maturity') || line.includes('---')) {
+      continue;
+    }
     
-    const maturity = normalizeMaturity(maturityText);
+    // Pattern 1: | [1 month](url) | 3.620% | ... (linked maturity)
+    // Pattern 2: | 1 month | 3.620% | ... (plain text maturity)
+    // We need to capture the maturity and the FIRST percentage after it
     
-    if (maturity && !isNaN(rateValue)) {
-      // Check if we already have this maturity (take first occurrence)
-      const existing = yields.find(y => y.maturity === maturity);
-      if (!existing) {
+    // Match: | [X month/year](link) | RATE% | or | X month/year | RATE% |
+    const patterns = [
+      // Linked: | [1 month](url) | 3.620% |
+      /\|\s*\[(\d+\s+(?:month|year)s?)\]\([^)]+\)\s*\|\s*([\d.]+)%/gi,
+      // Plain: | 1 month | 3.620% |
+      /\|\s*(\d+\s+(?:month|year)s?)\s*\|\s*([\d.]+)%/gi,
+    ];
+    
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(line)) !== null) {
+        const maturityText = match[1].trim();
+        const rateValue = parseFloat(match[2]);
+        const maturity = normalizeMaturity(maturityText);
+        
+        if (maturity && !isNaN(rateValue) && !seenMaturities.has(maturity)) {
+          seenMaturities.add(maturity);
+          yields.push({ maturity, rate: rateValue });
+        }
+      }
+    }
+  }
+  
+  // Also try a more general pattern for the whole content
+  if (yields.length === 0) {
+    // Fallback: find any "X month/year" followed by a percentage
+    const generalPattern = /(\d+)\s+(month|year)s?[^\d]*?([\d.]+)\s*%/gi;
+    let match;
+    while ((match = generalPattern.exec(markdown)) !== null) {
+      const num = match[1];
+      const unit = match[2];
+      const maturityText = `${num} ${unit}`;
+      const rateValue = parseFloat(match[3]);
+      const maturity = normalizeMaturity(maturityText);
+      
+      if (maturity && !isNaN(rateValue) && rateValue < 100 && !seenMaturities.has(maturity)) {
+        seenMaturities.add(maturity);
         yields.push({ maturity, rate: rateValue });
       }
     }
   }
+  
+  // Sort by maturity order
+  yields.sort((a, b) => {
+    const indexA = ALL_MATURITIES.indexOf(a.maturity);
+    const indexB = ALL_MATURITIES.indexOf(b.maturity);
+    if (indexA === -1) return 1;
+    if (indexB === -1) return -1;
+    return indexA - indexB;
+  });
   
   return yields;
 }
@@ -116,7 +153,7 @@ async function scrapeCountry(slug: string, countryName: string, apiKey: string):
     // Parse yield data from markdown
     const yields = parseYieldData(markdown);
     
-    console.log(`Parsed ${yields.length} yields for ${countryName}:`, JSON.stringify(yields.slice(0, 5)));
+    console.log(`Parsed ${yields.length} yields for ${countryName}:`, JSON.stringify(yields));
     
     // Convert to rates object
     const rates: Record<string, number | null> = {};
@@ -196,10 +233,30 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Collect all unique maturities found across all countries
+    const allMaturitiesSet = new Set<string>();
+    for (const result of results) {
+      Object.keys(result.rates).forEach(m => allMaturitiesSet.add(m));
+    }
+    
+    // Sort maturities in proper order
+    const foundMaturities = Array.from(allMaturitiesSet).sort((a, b) => {
+      const indexA = ALL_MATURITIES.indexOf(a);
+      const indexB = ALL_MATURITIES.indexOf(b);
+      if (indexA === -1) return 1;
+      if (indexB === -1) return -1;
+      return indexA - indexB;
+    });
+
     console.log(`Scraping complete. ${results.length} countries processed in ${Date.now() - startTime}ms`);
+    console.log(`Found maturities: ${foundMaturities.join(', ')}`);
 
     return new Response(
-      JSON.stringify({ success: true, data: results }),
+      JSON.stringify({ 
+        success: true, 
+        data: results,
+        maturities: foundMaturities 
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
