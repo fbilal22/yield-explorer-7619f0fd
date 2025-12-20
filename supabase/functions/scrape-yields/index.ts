@@ -20,92 +20,56 @@ interface CountryYieldResult {
 function normalizeMaturity(maturity: string): string | null {
   const normalized = maturity.toLowerCase().trim();
   
-  // Map common patterns
-  if (normalized.includes('1 month') || normalized === '1m') return '1M';
-  if (normalized.includes('3 month') || normalized === '3m') return '3M';
-  if (normalized.includes('6 month') || normalized === '6m') return '6M';
-  if (normalized.includes('1 year') || normalized === '1y') return '1Y';
-  if (normalized.includes('2 year') || normalized === '2y') return '2Y';
-  if (normalized.includes('3 year') || normalized === '3y') return '3Y';
-  if (normalized.includes('5 year') || normalized === '5y') return '5Y';
-  if (normalized.includes('7 year') || normalized === '7y') return '7Y';
-  if (normalized.includes('10 year') || normalized === '10y') return '10Y';
-  if (normalized.includes('15 year') || normalized === '15y') return '15Y';
-  if (normalized.includes('20 year') || normalized === '20y') return '20Y';
-  if (normalized.includes('30 year') || normalized === '30y') return '30Y';
+  // Handle "1 month", "3 months", "1 year", "10 years" etc.
+  const match = normalized.match(/^(\d+)\s*(month|year)s?$/);
+  if (!match) return null;
   
-  return null;
+  const num = parseInt(match[1]);
+  const unit = match[2];
+  
+  if (unit === 'month') {
+    if (num === 1) return '1M';
+    if (num === 2) return '2M';
+    if (num === 3) return '3M';
+    if (num === 4) return '4M';
+    if (num === 6) return '6M';
+    if (num === 9) return '9M';
+    return `${num}M`;
+  } else {
+    if (num === 1) return '1Y';
+    if (num === 2) return '2Y';
+    if (num === 3) return '3Y';
+    if (num === 5) return '5Y';
+    if (num === 7) return '7Y';
+    if (num === 10) return '10Y';
+    if (num === 15) return '15Y';
+    if (num === 20) return '20Y';
+    if (num === 30) return '30Y';
+    return `${num}Y`;
+  }
 }
 
-// Parse the scraped markdown/html content to extract yield data
+// Parse the scraped markdown content to extract yield data
+// Format: | [1 month](url) | 3.620% | -31.7 bp | ...
 function parseYieldData(markdown: string): YieldData[] {
   const yields: YieldData[] = [];
   
-  // Look for table rows with maturity and rate data
-  // The table has columns: Residual Maturity | Last | Chg 1M | ...
-  const lines = markdown.split('\n');
-  
-  for (const line of lines) {
-    // Look for patterns like "3 months | 2.391%" or table row formats
-    const maturityPatterns = [
-      /(\d+\s*(?:month|year)s?)\s*[|\t,]\s*([\d.]+)\s*%/gi,
-      /(\d+\s*(?:month|year)s?)\s*\*?\*?\s*[|\t]\s*([\d.]+)/gi,
-    ];
-    
-    for (const pattern of maturityPatterns) {
-      let match;
-      while ((match = pattern.exec(line)) !== null) {
-        const maturity = normalizeMaturity(match[1]);
-        const rate = parseFloat(match[2]);
-        
-        if (maturity && !isNaN(rate)) {
-          // Check if we already have this maturity
-          const existing = yields.find(y => y.maturity === maturity);
-          if (!existing) {
-            yields.push({ maturity, rate });
-          }
-        }
-      }
-    }
-  }
-  
-  return yields;
-}
-
-// Alternative parsing for HTML table structure
-function parseTableFromMarkdown(markdown: string): YieldData[] {
-  const yields: YieldData[] = [];
-  
-  // Look for markdown table rows
-  const tableRowPattern = /\|\s*(?:🟥|🟩|⬜)?\s*(\d+\s*(?:months?|years?))\s*\|\s*([\d.]+%?)\s*\|/gi;
+  // Match table rows like: | [1 month](url) | 3.620% | ... or | 1 month | 3.620% | ...
+  // The pattern captures: maturity text and the rate percentage
+  const tableRowPattern = /\|\s*(?:\[)?(\d+\s+(?:month|year)s?)(?:\][^\|]*)?\s*\|\s*([\d.]+)%/gi;
   
   let match;
   while ((match = tableRowPattern.exec(markdown)) !== null) {
-    const maturity = normalizeMaturity(match[1]);
-    const rateStr = match[2].replace('%', '');
-    const rate = parseFloat(rateStr);
+    const maturityText = match[1].trim();
+    const rateValue = parseFloat(match[2]);
     
-    if (maturity && !isNaN(rate)) {
+    const maturity = normalizeMaturity(maturityText);
+    
+    if (maturity && !isNaN(rateValue)) {
+      // Check if we already have this maturity (take first occurrence)
       const existing = yields.find(y => y.maturity === maturity);
       if (!existing) {
-        yields.push({ maturity, rate });
-      }
-    }
-  }
-  
-  // Also try simpler patterns
-  const simplePattern = /(\d+)\s*(months?|years?)\s*[^\d]*([\d.]+)\s*%/gi;
-  while ((match = simplePattern.exec(markdown)) !== null) {
-    const num = match[1];
-    const unit = match[2].toLowerCase();
-    const maturityStr = `${num} ${unit}`;
-    const maturity = normalizeMaturity(maturityStr);
-    const rate = parseFloat(match[3]);
-    
-    if (maturity && !isNaN(rate)) {
-      const existing = yields.find(y => y.maturity === maturity);
-      if (!existing) {
-        yields.push({ maturity, rate });
+        yields.push({ maturity, rate: rateValue });
       }
     }
   }
@@ -129,7 +93,7 @@ async function scrapeCountry(slug: string, countryName: string, apiKey: string):
         url,
         formats: ['markdown'],
         onlyMainContent: true,
-        waitFor: 2000,
+        waitFor: 1000,
       }),
     });
 
@@ -149,13 +113,10 @@ async function scrapeCountry(slug: string, countryName: string, apiKey: string):
     
     console.log(`Received ${markdown.length} chars for ${countryName}`);
     
-    // Try both parsing methods
-    let yields = parseYieldData(markdown);
-    if (yields.length === 0) {
-      yields = parseTableFromMarkdown(markdown);
-    }
+    // Parse yield data from markdown
+    const yields = parseYieldData(markdown);
     
-    console.log(`Parsed ${yields.length} yields for ${countryName}:`, yields);
+    console.log(`Parsed ${yields.length} yields for ${countryName}:`, JSON.stringify(yields.slice(0, 5)));
     
     // Convert to rates object
     const rates: Record<string, number | null> = {};
@@ -206,11 +167,19 @@ Deno.serve(async (req) => {
 
     console.log(`Starting to scrape ${countries.length} countries`);
 
-    // Scrape countries in batches to avoid rate limiting
-    const batchSize = 3;
+    // Scrape countries in parallel batches
+    const batchSize = 5;
     const results: CountryYieldResult[] = [];
+    const startTime = Date.now();
+    const maxExecutionTime = 50000; // 50 seconds max
     
     for (let i = 0; i < countries.length; i += batchSize) {
+      // Check if we're running out of time
+      if (Date.now() - startTime > maxExecutionTime) {
+        console.log(`Timeout approaching, returning ${results.length} results`);
+        break;
+      }
+      
       const batch = countries.slice(i, i + batchSize);
       const batchPromises = batch.map((c: { slug: string; name: string }) => 
         scrapeCountry(c.slug, c.name, apiKey)
@@ -219,15 +188,15 @@ Deno.serve(async (req) => {
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults);
       
-      console.log(`Completed batch ${Math.floor(i / batchSize) + 1}, total: ${results.length}/${countries.length}`);
+      console.log(`Completed batch ${Math.floor(i / batchSize) + 1}, total: ${results.length}/${countries.length}, time: ${Date.now() - startTime}ms`);
       
       // Small delay between batches to avoid rate limiting
       if (i + batchSize < countries.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
 
-    console.log(`Scraping complete. ${results.length} countries processed.`);
+    console.log(`Scraping complete. ${results.length} countries processed in ${Date.now() - startTime}ms`);
 
     return new Response(
       JSON.stringify({ success: true, data: results }),
