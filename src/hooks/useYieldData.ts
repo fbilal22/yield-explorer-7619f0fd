@@ -3,19 +3,51 @@ import { CountryYieldData } from "@/types/yield";
 import { countries } from "@/lib/countries";
 import { scrapeYields } from "@/lib/api/yields";
 
-// Priority countries to scrape first (major economies)
-const priorityCountries = [
-  "united-states", "germany", "japan", "united-kingdom", "france",
-  "italy", "spain", "canada", "australia", "switzerland",
-  "china", "india", "brazil", "south-korea", "netherlands"
-];
+// Default maturities to display if API doesn't return any
+// This will be overridden by the maturities returned from the API
+const DEFAULT_MATURITIES = ["1M", "3M", "6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"];
 
-// Standard maturities to display (filter out uncommon ones like 2M, 4M, 4Y, etc.)
-const STANDARD_MATURITIES = ["1M", "3M", "6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"];
+// Helper function to filter maturities to max 30Y
+function filterMaturitiesTo30Y(maturities: string[]): string[] {
+  return maturities.filter(m => {
+    const match = m.match(/^(\d+)(M|Y)$/);
+    if (!match) return false;
+    
+    const num = parseInt(match[1]);
+    const unit = match[2];
+    
+    // Keep all months (M) and years (Y) up to 30Y
+    if (unit === 'M') return true; // Keep all months
+    if (unit === 'Y') return num <= 30; // Keep years up to 30Y
+    
+    return false;
+  });
+}
+
+// Helper function to convert maturity to months for comparison
+function maturityToMonths(maturity: string): number {
+  const match = maturity.match(/^(\d+)(M|Y)$/);
+  if (!match) return Infinity;
+  const num = parseInt(match[1]);
+  const unit = match[2];
+  return unit === 'M' ? num : num * 12;
+}
+
+// Helper function to sort maturities properly (always by chronological order)
+function sortMaturities(maturities: string[]): string[] {
+  // Create a copy to avoid mutating the original array
+  const sorted = [...maturities];
+  return sorted.sort((a, b) => {
+    // Always sort by converting to months for accurate chronological order
+    const monthsA = maturityToMonths(a);
+    const monthsB = maturityToMonths(b);
+    return monthsA - monthsB;
+  });
+}
 
 export function useYieldData() {
   const [data, setData] = useState<CountryYieldData[]>([]);
-  const [maturities, setMaturities] = useState<string[]>(STANDARD_MATURITIES);
+  const [maturities, setMaturities] = useState<string[]>(DEFAULT_MATURITIES);
   const [isLoading, setIsLoading] = useState(false);
   const [lastFetched, setLastFetched] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -25,14 +57,10 @@ export function useYieldData() {
     setError(null);
 
     try {
-      console.log("Starting to fetch real yield data...");
+      console.log(`Starting to fetch yield data for all ${countries.length} countries...`);
       
-      // Get priority countries first, then others
-      const priorityList = countries.filter(c => priorityCountries.includes(c.slug));
-      const otherList = countries.filter(c => !priorityCountries.includes(c.slug));
-      const orderedCountries = [...priorityList, ...otherList];
-      
-      const countryList = orderedCountries.map(c => ({ slug: c.slug, name: c.name }));
+      // Scrape all countries without prioritization
+      const countryList = countries.map(c => ({ slug: c.slug, name: c.name }));
       
       const response = await scrapeYields(countryList);
       
@@ -40,8 +68,29 @@ export function useYieldData() {
         console.log(`Fetched ${response.data.length} countries`);
         setData(response.data);
         
-        // Always use standard maturities for display
-        setMaturities(STANDARD_MATURITIES);
+        // Use maturities returned from API, or fallback to default
+        if (response.maturities && response.maturities.length > 0) {
+          // Filter to max 30Y and sort
+          const filtered = filterMaturitiesTo30Y([...response.maturities]);
+          const sortedMaturities = sortMaturities(filtered);
+          setMaturities(sortedMaturities);
+          console.log(`Using ${sortedMaturities.length} maturities from API (filtered to 30Y max):`, sortedMaturities);
+        } else {
+          // Fallback: collect all unique maturities from the data
+          const allMaturitiesSet = new Set<string>();
+          response.data.forEach(country => {
+            Object.keys(country.rates).forEach(m => allMaturitiesSet.add(m));
+          });
+          if (allMaturitiesSet.size > 0) {
+            // Filter to max 30Y and sort
+            const filtered = filterMaturitiesTo30Y(Array.from(allMaturitiesSet));
+            const sortedMaturities = sortMaturities(filtered);
+            setMaturities(sortedMaturities);
+            console.log(`Using ${sortedMaturities.length} maturities from data (filtered to 30Y max):`, sortedMaturities);
+          } else {
+            setMaturities(DEFAULT_MATURITIES);
+          }
+        }
         
         setLastFetched(new Date().toLocaleTimeString());
       } else {
@@ -68,17 +117,3 @@ export function useYieldData() {
   };
 }
 
-// Sort maturities in proper order (1M, 2M, 3M... 1Y, 2Y... 10Y, 20Y, 30Y)
-function sortMaturities(maturities: string[]): string[] {
-  return maturities.sort((a, b) => {
-    const parseMaturity = (m: string) => {
-      const match = m.match(/^(\d+)(M|Y)$/);
-      if (!match) return Infinity;
-      const num = parseInt(match[1]);
-      const unit = match[2];
-      // Convert to months for comparison
-      return unit === 'M' ? num : num * 12;
-    };
-    return parseMaturity(a) - parseMaturity(b);
-  });
-}
