@@ -1,7 +1,14 @@
 import { useState, useCallback } from "react";
 import { CountryYieldData } from "@/types/yield";
 import { countries } from "@/lib/countries";
-import { scrapeAllYields } from "@/lib/api/yields";
+import { scrapeYields } from "@/lib/api/yields";
+
+// Priority countries to scrape first (major economies)
+const priorityCountries = [
+  "united-states", "germany", "japan", "united-kingdom", "france",
+  "italy", "spain", "canada", "australia", "switzerland",
+  "china", "india", "brazil", "south-korea", "netherlands"
+];
 
 export function useYieldData() {
   const [data, setData] = useState<CountryYieldData[]>([]);
@@ -15,7 +22,15 @@ export function useYieldData() {
 
     try {
       console.log("Starting to fetch real yield data...");
-      const response = await scrapeAllYields();
+      
+      // Get priority countries first, then others
+      const priorityList = countries.filter(c => priorityCountries.includes(c.slug));
+      const otherList = countries.filter(c => !priorityCountries.includes(c.slug));
+      const orderedCountries = [...priorityList, ...otherList];
+      
+      const countryList = orderedCountries.map(c => ({ slug: c.slug, name: c.name }));
+      
+      const response = await scrapeYields(countryList);
       
       if (response.success && response.data) {
         console.log(`Fetched ${response.data.length} countries`);
