@@ -105,16 +105,16 @@ function parseYieldData(markdown: string, html?: string): YieldData[] {
       continue;
     }
     
-    // Try all patterns on each line
+    // Try all patterns on each line - improved to handle negative values
     const patterns = [
       // Linked: | [1 month](url) | 3.620% | or | [1 month](url) | -0.290% |
-      /\|\s*\[(\d+\s+(?:month|year)s?)\]\([^)]+\)\s*\|\s*(-?\d+\.?\d*)%/gi,
+      /\|\s*\[(\d+\s+(?:month|year)s?)\]\([^)]+\)\s*\|\s*([-−]?\d+\.?\d*)%/gi,
       // Plain: | 1 month | 3.620% | or | 1 month | -0.290% |
-      /\|\s*(\d+\s+(?:month|year)s?)\s*\|\s*(-?\d+\.?\d*)%/gi,
+      /\|\s*(\d+\s+(?:month|year)s?)\s*\|\s*([-−]?\d+\.?\d*)%/gi,
       // Without spaces: |1 month|3.620%| or |1 month|-0.290%|
-      /\|(\d+\s+(?:month|year)s?)\|(-?\d+\.?\d*)%/gi,
-      // More flexible: maturity and rate anywhere in the line
-      /(\d+\s+(?:month|year)s?)[^\d]*?(-?\d+\.?\d*)\s*%/gi,
+      /\|(\d+\s+(?:month|year)s?)\|([-−]?\d+\.?\d*)%/gi,
+      // More flexible: maturity and rate anywhere in the line (handles negative with minus or dash)
+      /(\d+\s+(?:month|year)s?)[^\d\-−]*?([-−]?\d+\.?\d*)\s*%/gi,
     ];
     
     for (const pattern of patterns) {
@@ -122,7 +122,9 @@ function parseYieldData(markdown: string, html?: string): YieldData[] {
       let match;
       while ((match = pattern.exec(line)) !== null) {
         const maturityText = match[1].trim();
-        const rateValue = parseFloat(match[2]);
+        // Normalize minus sign (handle both regular minus and unicode minus)
+        const rateStr = match[2].replace('−', '-');
+        const rateValue = parseFloat(rateStr);
         const maturity = normalizeMaturity(maturityText);
         if (maturity) {
           addYield(maturity, rateValue);
@@ -132,13 +134,14 @@ function parseYieldData(markdown: string, html?: string): YieldData[] {
   }
   
   // METHOD 2: Parse entire markdown with general patterns (catches data not in table format)
+  // Use patterns that handle both regular minus (-) and unicode minus (−)
   const generalPatterns = [
     // Pattern: "1 month" or "1 months" followed by percentage anywhere
-    /(\d+)\s+(month|year)s?\s*[^\d]*?(-?\d+\.?\d*)\s*%/gi,
+    /(\d+)\s+(month|year)s?\s*[^\d\-−]*?([-−]?\d+\.?\d*)\s*%/gi,
     // Pattern with colon or pipe separator
-    /(\d+)\s+(month|year)s?[:\|]\s*(-?\d+\.?\d*)\s*%/gi,
+    /(\d+)\s+(month|year)s?[:\|]\s*([-−]?\d+\.?\d*)\s*%/gi,
     // Pattern: number + unit + percentage (very flexible)
-    /(\d+)\s+(month|year)s?[^%]*?(-?\d+\.?\d*)\s*%/gi,
+    /(\d+)\s+(month|year)s?[^%]*?([-−]?\d+\.?\d*)\s*%/gi,
   ];
   
   for (const pattern of generalPatterns) {
@@ -148,7 +151,9 @@ function parseYieldData(markdown: string, html?: string): YieldData[] {
       const num = match[1];
       const unit = match[2];
       const maturityText = `${num} ${unit}`;
-      const rateValue = parseFloat(match[3]);
+      // Normalize unicode minus to regular minus
+      const rateStr = match[3].replace('−', '-');
+      const rateValue = parseFloat(rateStr);
       const maturity = normalizeMaturity(maturityText);
       if (maturity) {
         addYield(maturity, rateValue);
@@ -180,13 +185,14 @@ function parseYieldData(markdown: string, html?: string): YieldData[] {
         
         // Check if cell1 is a maturity and cell2 is a rate
         const maturityMatch = cell1.match(/(\d+)\s+(month|year)s?/i);
-        const rateMatch = cell2.match(/(-?\d+\.?\d*)\s*%/);
+        const rateMatch = cell2.match(/([-−]?\d+\.?\d*)\s*%/);
         
         if (maturityMatch && rateMatch) {
           const num = maturityMatch[1];
           const unit = maturityMatch[2].toLowerCase();
           const maturityText = `${num} ${unit}`;
-          const rateValue = parseFloat(rateMatch[1]);
+          const rateStr = rateMatch[1].replace('−', '-');
+          const rateValue = parseFloat(rateStr);
           const maturity = normalizeMaturity(maturityText);
           if (maturity) {
             addYield(maturity, rateValue);
@@ -196,7 +202,7 @@ function parseYieldData(markdown: string, html?: string): YieldData[] {
       
       // Also try to find maturity and rate anywhere in the row
       const maturityMatch = row.match(/(\d+)\s+(month|year)s?/i);
-      const rateMatches = row.matchAll(/(-?\d+\.?\d*)\s*%/g);
+      const rateMatches = row.matchAll(/([-−]?\d+\.?\d*)\s*%/g);
       
       if (maturityMatch) {
         const num = maturityMatch[1];
@@ -207,7 +213,8 @@ function parseYieldData(markdown: string, html?: string): YieldData[] {
         if (maturity) {
           // Try each percentage found in the row
           for (const rateMatch of rateMatches) {
-            const rateValue = parseFloat(rateMatch[1]);
+            const rateStr = rateMatch[1].replace('−', '-');
+            const rateValue = parseFloat(rateStr);
             if (addYield(maturity, rateValue)) {
               break; // Use first valid rate for this maturity
             }
@@ -221,13 +228,14 @@ function parseYieldData(markdown: string, html?: string): YieldData[] {
   if (html && yields.length === 0) {
     // Look for any text content that matches maturity + rate pattern
     const htmlText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-    const htmlPattern = /(\d+)\s+(month|year)s?[^\d]*?(-?\d+\.?\d*)\s*%/gi;
+    const htmlPattern = /(\d+)\s+(month|year)s?[^\d\-−]*?([-−]?\d+\.?\d*)\s*%/gi;
     let match;
     while ((match = htmlPattern.exec(htmlText)) !== null) {
       const num = match[1];
       const unit = match[2];
       const maturityText = `${num} ${unit}`;
-      const rateValue = parseFloat(match[3]);
+      const rateStr = match[3].replace('−', '-');
+      const rateValue = parseFloat(rateStr);
       const maturity = normalizeMaturity(maturityText);
       if (maturity) {
         addYield(maturity, rateValue);
