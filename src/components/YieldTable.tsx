@@ -9,7 +9,7 @@ interface YieldTableProps {
   searchQuery?: string;
 }
 
-function formatRate(rate: number | null): string {
+function formatRate(rate: number | null | undefined): string {
   if (rate === null || rate === undefined) return "—";
   return rate.toFixed(2) + "%";
 }
