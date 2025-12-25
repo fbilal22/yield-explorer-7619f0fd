@@ -9,7 +9,7 @@ import { useFuturesData } from "@/hooks/useFuturesData";
 const PRESET_SYMBOLS = [
   { symbol: "SQZ25", name: "3-Month SOFR" },
   { symbol: "RAZ25", name: "South African Rand" },
-  { symbol: "J8Z25", name: "Japanese Yen" },
+  { symbol: "J8Z25", name: "GBP SONIA" },
   { symbol: "T0Z25", name: "Euro/USD" },
 ];
 
