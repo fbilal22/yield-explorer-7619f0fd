@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { StatsCards } from "@/components/StatsCards";
 import { YieldTable } from "@/components/YieldTable";
 import { useYieldData } from "@/hooks/useYieldData";
+import { Button } from "@/components/ui/button";
+import { ArrowRight } from "lucide-react";
 
 const Index = () => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -34,6 +37,16 @@ const Index = () => {
       <div className="relative z-10">
         <div className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8">
           <div className="space-y-8">
+            {/* Navigation */}
+            <div className="flex items-center gap-4">
+              <Link to="/futures">
+                <Button variant="outline" size="sm" className="gap-2">
+                  Futures Prices
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+
             {/* Header */}
             <DashboardHeader
               onRefresh={fetchData}
