@@ -6,6 +6,13 @@ import { Input } from "@/components/ui/input";
 import { FuturesTable } from "@/components/FuturesTable";
 import { useFuturesData } from "@/hooks/useFuturesData";
 
+const PRESET_SYMBOLS = [
+  { symbol: "SQZ25", name: "3-Month SOFR" },
+  { symbol: "RAZ25", name: "South African Rand" },
+  { symbol: "J8Z25", name: "Japanese Yen" },
+  { symbol: "T0Z25", name: "Euro/USD" },
+];
+
 const Futures = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [symbolInput, setSymbolInput] = useState("SQZ25");
@@ -27,6 +34,11 @@ const Futures = () => {
     if (symbolInput.trim()) {
       fetchData(symbolInput.trim().toUpperCase());
     }
+  };
+
+  const handlePresetClick = (presetSymbol: string) => {
+    setSymbolInput(presetSymbol);
+    fetchData(presetSymbol);
   };
 
   return (
@@ -80,6 +92,23 @@ const Futures = () => {
                     Refresh
                   </Button>
                 </div>
+              </div>
+
+              {/* Preset Symbols */}
+              <div className="flex flex-wrap gap-2">
+                <span className="text-sm text-muted-foreground self-center mr-2">Quick Select:</span>
+                {PRESET_SYMBOLS.map((preset) => (
+                  <Button
+                    key={preset.symbol}
+                    variant={symbol === preset.symbol ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => handlePresetClick(preset.symbol)}
+                    disabled={isLoading}
+                    className="text-xs"
+                  >
+                    {preset.symbol} - {preset.name}
+                  </Button>
+                ))}
               </div>
 
               {/* Symbol Input & Search */}
