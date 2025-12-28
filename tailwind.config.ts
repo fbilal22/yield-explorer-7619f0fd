@@ -74,6 +74,7 @@ export default {
           negative: "hsl(var(--rate-negative))",
           neutral: "hsl(var(--rate-neutral))",
         },
+        interpolated: "hsl(var(--interpolated))",
         table: {
           header: "hsl(var(--table-header))",
           "row-hover": "hsl(var(--table-row-hover))",

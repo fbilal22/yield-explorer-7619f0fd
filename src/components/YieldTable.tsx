@@ -1,12 +1,14 @@
 import { useMemo } from "react";
 import { CountryYieldData } from "@/types/yield";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface YieldTableProps {
   data: CountryYieldData[];
   maturities: string[];
   isLoading?: boolean;
   searchQuery?: string;
+  interpolatedValues?: Map<string, Set<string>>;
 }
 
 function formatRate(rate: number | null | undefined): string {
@@ -14,8 +16,9 @@ function formatRate(rate: number | null | undefined): string {
   return rate.toFixed(2) + "%";
 }
 
-function getRateColor(rate: number | null): string {
+function getRateColor(rate: number | null, isInterpolated?: boolean): string {
   if (rate === null || rate === undefined) return "text-muted-foreground";
+  if (isInterpolated) return "text-interpolated";
   if (rate < 0) return "text-rate-negative";
   if (rate < 2) return "text-accent";
   if (rate < 5) return "text-foreground";
@@ -38,7 +41,7 @@ function SkeletonRow({ colCount }: { colCount: number }) {
   );
 }
 
-export function YieldTable({ data, maturities, isLoading, searchQuery }: YieldTableProps) {
+export function YieldTable({ data, maturities, isLoading, searchQuery, interpolatedValues }: YieldTableProps) {
   const filteredData = useMemo(() => {
     if (!searchQuery) return data;
     const query = searchQuery.toLowerCase();
@@ -55,78 +58,103 @@ export function YieldTable({ data, maturities, isLoading, searchQuery }: YieldTa
   ];
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-border bg-card shadow-card">
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="bg-table-header border-b border-border">
-              <th className="px-4 py-3 text-left font-semibold text-sm text-muted-foreground sticky left-0 bg-table-header z-20 min-w-[180px]">
-                Country
-              </th>
-              {displayMaturities.map((maturity) => (
-                <th
-                  key={maturity}
-                  className="px-3 py-3 text-right font-semibold text-sm text-muted-foreground min-w-[70px]"
-                >
-                  {maturity}
+    <TooltipProvider>
+      <div className="relative overflow-hidden rounded-lg border border-border bg-card shadow-card">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-table-header border-b border-border">
+                <th className="px-4 py-3 text-left font-semibold text-sm text-muted-foreground sticky left-0 bg-table-header z-20 min-w-[180px]">
+                  Country
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              Array.from({ length: 10 }).map((_, i) => (
-                <SkeletonRow key={i} colCount={displayMaturities.length} />
-              ))
-            ) : filteredData.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={displayMaturities.length + 1}
-                  className="px-4 py-12 text-center text-muted-foreground"
-                >
-                  {searchQuery
-                    ? "No countries match your search"
-                    : "No data available. Click Refresh to load data."}
-                </td>
+                {displayMaturities.map((maturity) => (
+                  <th
+                    key={maturity}
+                    className="px-3 py-3 text-right font-semibold text-sm text-muted-foreground min-w-[70px]"
+                  >
+                    {maturity}
+                  </th>
+                ))}
               </tr>
-            ) : (
-              filteredData.map((country, index) => (
-                <tr
-                  key={country.slug}
-                  className={cn(
-                    "border-b border-border/50 transition-colors hover:bg-table-row-hover animate-fade-in",
-                    country.error && "opacity-60"
-                  )}
-                  style={{ animationDelay: `${index * 20}ms` }}
-                >
-                  <td className="px-4 py-3 sticky left-0 bg-card z-10 font-medium text-sm group-hover:bg-table-row-hover">
-                    <div className="flex items-center gap-2">
-                      <span>{country.country}</span>
-                      {country.error && (
-                        <span className="text-xs text-rate-negative" title={country.error}>⚠</span>
-                      )}
-                    </div>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                Array.from({ length: 10 }).map((_, i) => (
+                  <SkeletonRow key={i} colCount={displayMaturities.length} />
+                ))
+              ) : filteredData.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={displayMaturities.length + 1}
+                    className="px-4 py-12 text-center text-muted-foreground"
+                  >
+                    {searchQuery
+                      ? "No countries match your search"
+                      : "No data available. Click Refresh to load data."}
                   </td>
-                  {displayMaturities.map((maturity) => {
-                    const rate = country.rates[maturity] ?? null;
-                    return (
-                      <td
-                        key={maturity}
-                        className={cn(
-                          "table-cell",
-                          getRateColor(rate)
-                        )}
-                      >
-                        {formatRate(rate)}
-                      </td>
-                    );
-                  })}
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                filteredData.map((country, index) => {
+                  const countryInterpolated = interpolatedValues?.get(country.slug);
+                  
+                  return (
+                    <tr
+                      key={country.slug}
+                      className={cn(
+                        "border-b border-border/50 transition-colors hover:bg-table-row-hover animate-fade-in",
+                        country.error && "opacity-60"
+                      )}
+                      style={{ animationDelay: `${index * 20}ms` }}
+                    >
+                      <td className="px-4 py-3 sticky left-0 bg-card z-10 font-medium text-sm group-hover:bg-table-row-hover">
+                        <div className="flex items-center gap-2">
+                          <span>{country.country}</span>
+                          {country.error && (
+                            <span className="text-xs text-rate-negative" title={country.error}>⚠</span>
+                          )}
+                        </div>
+                      </td>
+                      {displayMaturities.map((maturity) => {
+                        const rate = country.rates[maturity] ?? null;
+                        const isInterpolated = countryInterpolated?.has(maturity) ?? false;
+                        
+                        const cell = (
+                          <td
+                            key={maturity}
+                            className={cn(
+                              "table-cell",
+                              getRateColor(rate, isInterpolated),
+                              isInterpolated && "italic"
+                            )}
+                          >
+                            {formatRate(rate)}
+                            {isInterpolated && <span className="text-xs ml-0.5">*</span>}
+                          </td>
+                        );
+                        
+                        if (isInterpolated) {
+                          return (
+                            <Tooltip key={maturity}>
+                              <TooltipTrigger asChild>
+                                {cell}
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="text-xs">Valeur interpolée (bootstrapping)</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          );
+                        }
+                        
+                        return cell;
+                      })}
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
