@@ -8,9 +8,9 @@ import { useFuturesData } from "@/hooks/useFuturesData";
 
 const PRESET_SYMBOLS = [
   { symbol: "SQZ25", name: "3-Month SOFR" },
-  { symbol: "RAZ25", name: "South African Rand" },
-  { symbol: "J8Z25", name: "GBP SONIA" },
-  { symbol: "T0Z25", name: "Euro/USD" },
+  { symbol: "RAZ25", name: "3-Month ESTR" },
+  { symbol: "J8Z25", name: "3-Month SONIA" },
+  { symbol: "T0Z25", name: "3-Month TONA" },
 ];
 
 const Futures = () => {
@@ -72,7 +72,7 @@ const Futures = () => {
                     Futures Prices
                   </h1>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    3-Month SOFR Futures - Real-time data from Barchart
+                    Interest Rate Futures - Real-time data from Barchart
                   </p>
                 </div>
 
