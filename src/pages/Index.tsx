@@ -6,6 +6,10 @@ import { YieldTable } from "@/components/YieldTable";
 import { useYieldData } from "@/hooks/useYieldData";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { InterpolationMethod } from "@/lib/bootstrapping";
 
 const Index = () => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -17,6 +21,11 @@ const Index = () => {
     fetchData,
     totalCountries,
     loadedCountries,
+    bootstrapMethod,
+    setBootstrapMethod,
+    enableBootstrapping,
+    setEnableBootstrapping,
+    interpolatedValues,
   } = useYieldData();
 
   useEffect(() => {
@@ -63,28 +72,66 @@ const Index = () => {
 
             {/* Main Table */}
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-lg font-semibold text-foreground">
                   Government Bond Yields
                 </h2>
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-accent" />
-                    Low (&lt;2%)
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-foreground" />
-                    Medium (2-5%)
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-warning" />
-                    High (5-10%)
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-rate-negative" />
-                    Very High (&gt;10%)
-                  </span>
+                
+                {/* Bootstrapping Controls */}
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="bootstrap-toggle"
+                      checked={enableBootstrapping}
+                      onCheckedChange={setEnableBootstrapping}
+                    />
+                    <Label htmlFor="bootstrap-toggle" className="text-sm text-muted-foreground cursor-pointer">
+                      Bootstrapping
+                    </Label>
+                  </div>
+                  
+                  {enableBootstrapping && (
+                    <Select
+                      value={bootstrapMethod}
+                      onValueChange={(value) => setBootstrapMethod(value as InterpolationMethod)}
+                    >
+                      <SelectTrigger className="w-[160px] h-8 text-xs">
+                        <SelectValue placeholder="Méthode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="linear">Linéaire</SelectItem>
+                        <SelectItem value="cubic-spline">Cubic Spline</SelectItem>
+                        <SelectItem value="nelson-siegel">Nelson-Siegel</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
+              </div>
+              
+              {/* Legend */}
+              <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-accent" />
+                  Low (&lt;2%)
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-foreground" />
+                  Medium (2-5%)
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-warning" />
+                  High (5-10%)
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full bg-rate-negative" />
+                  Very High (&gt;10%)
+                </span>
+                {enableBootstrapping && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-interpolated" />
+                    Interpolé*
+                  </span>
+                )}
               </div>
 
               <YieldTable
@@ -92,6 +139,7 @@ const Index = () => {
                 maturities={maturities}
                 isLoading={isLoading}
                 searchQuery={searchQuery}
+                interpolatedValues={interpolatedValues}
               />
             </div>
 
@@ -108,6 +156,11 @@ const Index = () => {
                   World Government Bonds
                 </a>
                 . Updated periodically.
+                {enableBootstrapping && (
+                  <span className="ml-2">
+                    * Valeurs interpolées via bootstrapping ({bootstrapMethod === 'nelson-siegel' ? 'Nelson-Siegel' : bootstrapMethod === 'cubic-spline' ? 'Cubic Spline' : 'Linéaire'}).
+                  </span>
+                )}
               </p>
             </footer>
           </div>

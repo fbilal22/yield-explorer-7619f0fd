@@ -1,7 +1,8 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { CountryYieldData } from "@/types/yield";
 import { countries } from "@/lib/countries";
 import { scrapeYields } from "@/lib/api/yields";
+import { bootstrapAllYieldCurves, InterpolationMethod } from "@/lib/bootstrapping";
 
 // Default maturities to display if API doesn't return any
 // This will be overridden by the maturities returned from the API
@@ -46,11 +47,54 @@ function sortMaturities(maturities: string[]): string[] {
 }
 
 export function useYieldData() {
-  const [data, setData] = useState<CountryYieldData[]>([]);
+  const [rawData, setRawData] = useState<CountryYieldData[]>([]);
   const [maturities, setMaturities] = useState<string[]>(DEFAULT_MATURITIES);
   const [isLoading, setIsLoading] = useState(false);
   const [lastFetched, setLastFetched] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [bootstrapMethod, setBootstrapMethod] = useState<InterpolationMethod>('cubic-spline');
+  const [enableBootstrapping, setEnableBootstrapping] = useState(true);
+
+  // Memoized bootstrapped data
+  const data = useMemo(() => {
+    if (!enableBootstrapping || rawData.length === 0) {
+      return rawData;
+    }
+    return bootstrapAllYieldCurves(rawData, maturities, bootstrapMethod);
+  }, [rawData, maturities, bootstrapMethod, enableBootstrapping]);
+
+  // Track which values are interpolated
+  const interpolatedValues = useMemo(() => {
+    const interpolated = new Map<string, Set<string>>();
+    
+    if (!enableBootstrapping) return interpolated;
+    
+    for (let i = 0; i < rawData.length; i++) {
+      const rawCountry = rawData[i];
+      const bootstrappedCountry = data[i];
+      
+      if (!bootstrappedCountry) continue;
+      
+      const countryInterpolated = new Set<string>();
+      
+      for (const maturity of maturities) {
+        const rawRate = rawCountry.rates[maturity];
+        const bootstrappedRate = bootstrappedCountry.rates[maturity];
+        
+        // Value is interpolated if raw is null but bootstrapped is not
+        if ((rawRate === null || rawRate === undefined) && 
+            bootstrappedRate !== null && bootstrappedRate !== undefined) {
+          countryInterpolated.add(maturity);
+        }
+      }
+      
+      if (countryInterpolated.size > 0) {
+        interpolated.set(rawCountry.slug, countryInterpolated);
+      }
+    }
+    
+    return interpolated;
+  }, [rawData, data, maturities, enableBootstrapping]);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -66,7 +110,7 @@ export function useYieldData() {
       
       if (response.success && response.data) {
         console.log(`Fetched ${response.data.length} countries`);
-        setData(response.data);
+        setRawData(response.data);
         
         // Use maturities returned from API, or fallback to default
         if (response.maturities && response.maturities.length > 0) {
@@ -107,13 +151,20 @@ export function useYieldData() {
 
   return {
     data,
+    rawData,
     maturities,
     isLoading,
     lastFetched,
     error,
     fetchData,
     totalCountries: countries.length,
-    loadedCountries: data.length,
+    loadedCountries: rawData.length,
+    // Bootstrapping controls
+    bootstrapMethod,
+    setBootstrapMethod,
+    enableBootstrapping,
+    setEnableBootstrapping,
+    interpolatedValues,
   };
 }
 
